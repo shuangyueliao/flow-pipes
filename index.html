@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="description" content="Flow Pipes — connect matching dots with glowing pipes, fill the whole board for a perfect star. 30 free levels.">
+<title>Flow Pipes · Connect the Dots</title>
+<script>
+// 平台 SDK 按域名条件加载（独立运行时完全不加载，游戏行为不变）
+(function () {
+  var host = location.hostname || "";
+  try {
+    if (host.indexOf("crazygames") !== -1) {
+      var s1 = document.createElement("script");
+      s1.src = "https://sdk.crazygames.com/crazygames-sdk-v3.js";
+      s1.onload = function () {
+        if (window.CrazyGames && window.CrazyGames.SDK) {
+          window.CrazyGames.SDK.init().then(function () {
+            try { window.CrazyGames.SDK.game.loadingStart(); } catch (e) {}
+            window.addEventListener("load", function () { try { window.CrazyGames.SDK.game.loadingStop(); } catch (e) {} });
+          }).catch(function () {});
+        }
+      };
+      document.head.appendChild(s1);
+      window.__portal = "crazygames";
+    } else if (host.indexOf("gamedistribution") !== -1 || host.indexOf("html5.gamedistribution.com") !== -1 || host.indexOf("gd.games") !== -1) {
+      var s2 = document.createElement("script");
+      s2.src = "https://sdk.gamedistribution.com/v2/main.min.js";
+      document.head.appendChild(s2);
+      window.__portal = "gamedistribution";
+    }
+  } catch (e) {}
+})();
+</script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; overflow:hidden; background:#07070f; font-family:-apple-system,"Helvetica Neue",Arial,sans-serif; }
+  #wrap { height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  #topbar { width:100%; max-width:480px; display:flex; align-items:center; gap:6px; padding:8px 10px 6px; }
+  #topbar button { background:#161632; color:#cfcfe8; border:1px solid #2c2c52; border-radius:9px; padding:7px 10px; font-size:11px; font-weight:700; letter-spacing:1px; cursor:pointer; font-family:inherit; }
+  #topbar button:active { transform:scale(.96); }
+  #topbar button:disabled { opacity:.35; }
+  #lvlLabel { font-size:14px; font-weight:800; color:#7ee0ff; margin-left:4px; min-width:54px; letter-spacing:1px; }
+  #spacer { flex:1; }
+  #stage { position:relative; width:min(480px, calc(100vw - 12px)); }
+  #stage { width:min(480px, calc(100vw - 12px), calc(100svh - 150px)); }
+  canvas { display:block; width:100%; height:auto; border-radius:14px; touch-action:none; }
+  #menu { position:absolute; inset:0; background:linear-gradient(180deg,#0c0c1e,#07070f); border-radius:14px; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:6; padding:10px; }
+  #menuTitle { font-size:30px; font-weight:900; letter-spacing:5px; color:#7ee0ff; text-shadow:0 0 18px rgba(126,224,255,.55); }
+  #menuSub { color:#8a8ab0; font-size:12px; margin:10px 6px 16px; text-align:center; line-height:1.55; }
+  #levelGrid { display:grid; grid-template-columns:repeat(6,1fr); gap:7px; width:100%; max-width:400px; }
+  #levelGrid button { position:relative; aspect-ratio:1/1; border:1px solid #2c2c52; border-radius:11px; background:#181838; color:#fff; font-size:16px; font-weight:800; cursor:pointer; font-family:inherit; }
+  #levelGrid button:not(.locked):hover { background:#232350; }
+  #levelGrid button:not(.locked):active { transform:scale(.94); }
+  #levelGrid button.locked { opacity:.32; }
+  #levelGrid .star { position:absolute; right:4px; top:2px; font-size:10px; color:#ffd76a; }
+  #menuFoot { color:#55556e; font-size:11px; margin-top:14px; }
+  #overlay { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(5,5,14,.78); border-radius:14px; z-index:5; }
+  #panel { background:#14142a; border:1px solid #30305a; border-radius:18px; padding:24px 30px; text-align:center; color:#fff; }
+  #panel h2 { font-size:22px; margin-bottom:2px; }
+  #panel .bigstar { font-size:30px; color:#ffd76a; margin:6px 0 2px; letter-spacing:4px; }
+  #panel p { color:#9a9ac0; font-size:12px; margin:6px auto 16px; max-width:240px; line-height:1.5; }
+  #panel .row { display:flex; gap:8px; justify-content:center; }
+  #panel button { border:none; border-radius:11px; padding:11px 18px; font-size:13px; font-weight:800; cursor:pointer; font-family:inherit; }
+  #panel button:active { transform:scale(.96); }
+  #nextBtn { background:linear-gradient(135deg,#20c4ff,#7b5bff); color:#fff; }
+  #panel button.ghost { background:#1d1d40; color:#bcbce0; border:1px solid #33335e; }
+  #footer { color:#55556e; font-size:11px; padding:6px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="topbar">
+    <button id="menuBtn">MENU</button>
+    <div id="lvlLabel">LV 1</div>
+    <div id="spacer"></div>
+    <button id="hintBtn">HINT 1</button>
+    <button id="resetBtn">RESET</button>
+    <button id="muteBtn">SOUND ON</button>
+  </div>
+  <div id="stage">
+    <canvas id="game" width="480" height="480"></canvas>
+    <div id="overlay"><div id="panel">
+      <h2 id="ovTitle">Level Complete</h2>
+      <div class="bigstar" id="ovStar"></div>
+      <p id="ovText"></p>
+      <div class="row">
+        <button id="nextBtn">NEXT</button>
+        <button id="levelsBtn" class="ghost">LEVELS</button>
+        <button id="replayBtn" class="ghost">REPLAY</button>
+      </div>
+    </div></div>
+    <div id="menu">
+      <div id="menuTitle">FLOW PIPES</div>
+      <div id="menuSub">Drag between matching dots to connect every pair.<br>Cover the whole board for a perfect star.</div>
+      <div id="levelGrid"></div>
+      <div id="menuFoot"><span id="starCount"></span> &middot; progress saved locally</div>
+    </div>
+  </div>
+  <div id="footer">Flow Pipes — a free puzzle game</div>
+</div>
+<script>
+"use strict";
+// ================= 纯逻辑层（无 DOM 依赖，可被 node 抽取后直接单测） =================
+var FP = {};
+
+// 确定性伪随机数（mulberry32）：关卡由种子决定，同一关布局固定，便于测试与重玩
+FP.mulberry32 = function (a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    var t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+};
+
+// 30 关配置：棋盘 5×5 → 9×9，颜色对数 2 → 8
+FP.levelSpec = function (n) {
+  var size, pairs;
+  if (n <= 5) { size = 5; pairs = [2, 3, 3, 4, 4][n - 1]; }
+  else if (n <= 10) { size = 6; pairs = [3, 4, 4, 5, 5][n - 6]; }
+  else if (n <= 16) { size = 7; pairs = [4, 5, 5, 6, 6, 6][n - 11]; }
+  else if (n <= 23) { size = 8; pairs = [5, 5, 6, 6, 7, 7, 7][n - 17]; }
+  else { size = 9; pairs = [6, 6, 7, 7, 7, 8, 8][n - 24]; }
+  return { size: size, pairs: pairs };
+};
+FP.levelSeed = function (n) { return ((n * 2654435761) ^ 0x9E3779B9) | 0; };
+
+// 随机哈密顿路径：Warnsdorff 启发（优先走向延续自由度最小的格子）+ 随机平局，
+// 带节点预算防止极端回溯；全部尝试失败返回 null（由蛇形路径兜底）。
+FP.hamPath = function (size, rnd) {
+  var total = size * size;
+  var dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  for (var attempt = 0; attempt < 6; attempt++) {
+    var visited = new Array(total);
+    var path = [];
+    var budget = 5000 + attempt * 4000;
+    for (var i = 0; i < total; i++) visited[i] = false;
+    function key(x, y) { return y * size + x; }
+    function dfs(x, y) {
+      if (budget-- <= 0) return false;
+      visited[key(x, y)] = true; path.push([x, y]);
+      if (path.length === total) return true;
+      var opts = [];
+      for (var d = 0; d < 4; d++) {
+        var nx = x + dirs[d][0], ny = y + dirs[d][1];
+        if (nx < 0 || ny < 0 || nx >= size || ny >= size || visited[key(nx, ny)]) continue;
+        var deg = 0;
+        for (var e = 0; e < 4; e++) {
+          var mx = nx + dirs[e][0], my = ny + dirs[e][1];
+          if (mx >= 0 && my >= 0 && mx < size && my < size && !visited[key(mx, my)]) deg++;
+        }
+        opts.push({ x: nx, y: ny, deg: deg, r: rnd() });
+      }
+      opts.sort(function (a, b) { return (a.deg - b.deg) || (a.r - b.r); });
+      for (var o = 0; o < opts.length; o++) if (dfs(opts[o].x, opts[o].y)) return true;
+      visited[key(x, y)] = false; path.pop();
+      return false;
+    }
+    if (dfs(Math.floor(rnd() * size), Math.floor(rnd() * size))) return path;
+  }
+  return null;
+};
+
+// 蛇形路径（兜底方案，必然成功），再随机做一次二面体变换增加多样性
+FP.snakePath = function (size) {
+  var path = [];
+  for (var y = 0; y < size; y++) for (var x = 0; x < size; x++) path.push([y % 2 === 0 ? x : size - 1 - x, y]);
+  return path;
+};
+FP.transformPath = function (path, size, k, flip) {
+  return path.map(function (p) {
+    var x = p[0], y = p[1], i, t;
+    for (i = 0; i < k; i++) { t = x; x = y; y = size - 1 - t; }
+    if (flip) x = size - 1 - x;
+    return [x, y];
+  });
+};
+
+// 把一条覆盖全盘的路径切成 k 段（每段 ≥2 格，长度尽量均衡），段即各色答案管线
+FP.cutPath = function (path, k, rnd) {
+  var N = path.length;
+  if (N < 2 * k) return null;
+  var maxLen = Math.min(N, Math.ceil((N / k) * 2.2) + 2);
+  var lens = [], i, guard = 0;
+  for (i = 0; i < k; i++) lens.push(2);
+  var R = N - 2 * k;
+  while (R > 0 && guard++ < 4000) { // 随机分配剩余长度，超上限就换一段
+    var j = Math.floor(rnd() * k);
+    if (lens[j] < maxLen) { lens[j]++; R--; }
+  }
+  var j2 = 0;
+  while (R > 0) { if (lens[j2 % k] < N) { lens[j2 % k]++; R--; } j2++; }
+  var segs = [], pos = 0;
+  for (i = 0; i < k; i++) { segs.push(path.slice(pos, pos + lens[i])); pos += lens[i]; }
+  return segs;
+};
+
+// 由切段构建关卡：段首/段尾即成对端点，段本身即全解
+FP.buildLevel = function (size, segs) {
+  var ends = [], solution = [];
+  for (var c = 0; c < segs.length; c++) {
+    var s = segs[c];
+    ends.push({ a: { x: s[0][0], y: s[0][1] }, b: { x: s[s.length - 1][0], y: s[s.length - 1][1] } });
+    var line = [];
+    for (var i = 0; i < s.length; i++) line.push({ x: s[i][0], y: s[i][1] });
+    solution.push(line);
+  }
+  return { size: size, pairs: segs.length, ends: ends, solution: solution };
+};
+
+// 生成后验证（硬性要求）：端点成对且无重叠、路径正交相邻不重复、
+// 全解恰好覆盖棋盘每一格 —— 即"至少一条全解存在"
+FP.verifyLevel = function (lvl) {
+  var errs = [];
+  var size = lvl.size, total = size * size, c, i;
+  var cover = new Array(total);
+  for (i = 0; i < total; i++) cover[i] = 0;
+  if (lvl.ends.length !== lvl.pairs) errs.push("ends/pairs mismatch");
+  if (lvl.solution.length !== lvl.pairs) errs.push("solution/pairs mismatch");
+  for (c = 0; c < lvl.solution.length; c++) {
+    var P = lvl.solution[c];
+    if (P.length < 2) errs.push("color " + c + " path too short");
+    for (i = 0; i < P.length; i++) {
+      var p = P[i];
+      if (p.x < 0 || p.y < 0 || p.x >= size || p.y >= size) { errs.push("cell out of board"); continue; }
+      var k = p.y * size + p.x;
+      if (cover[k]++) errs.push("cell covered twice at " + k);
+      if (i > 0 && Math.abs(P[i - 1].x - p.x) + Math.abs(P[i - 1].y - p.y) !== 1) errs.push("non-adjacent step in color " + c);
+    }
+  }
+  var endSeen = {};
+  for (c = 0; c < lvl.ends.length; c++) {
+    var pair = [lvl.ends[c].a, lvl.ends[c].b];
+    for (i = 0; i < 2; i++) {
+      var e2 = pair[i];
+      if (e2.x < 0 || e2.y < 0 || e2.x >= size || e2.y >= size) { errs.push("endpoint out of board"); continue; }
+      var ek = e2.y * size + e2.x;
+      if (endSeen[ek] !== undefined) errs.push("endpoint overlap at " + ek);
+      endSeen[ek] = c;
+    }
+  }
+  var cnt = {};
+  for (var ek2 in endSeen) cnt[endSeen[ek2]] = (cnt[endSeen[ek2]] || 0) + 1;
+  for (c = 0; c < lvl.pairs; c++) if (cnt[c] !== 2) errs.push("color " + c + " endpoint count != 2");
+  for (i = 0; i < total; i++) if (!cover[i]) errs.push("uncovered cell " + i);
+  return { ok: errs.length === 0, errors: errs };
+};
+
+// ================= 对局状态机（纯函数，节点测试直接驱动） =================
+// st = { size, pairs, ends, pipes[c]=[{x,y}...], grid[key]=color|-1, events:[], won, perfect }
+// 约定：每条 pipe 的第 0 格永远是该色的某个端点（起点），最后到达配对端点即完成。
+FP.newGame = function (lvl) {
+  var st = { size: lvl.size, pairs: lvl.pairs, ends: lvl.ends, pipes: [], grid: [], events: [], won: false, perfect: false };
+  var total = lvl.size * lvl.size;
+  for (var i = 0; i < total; i++) st.grid.push(-1);
+  for (var c = 0; c < lvl.pairs; c++) st.pipes.push([]);
+  return st;
+};
+FP.same = function (p, q) { return p.x === q.x && p.y === q.y; };
+FP.cellKey = function (st, p) { return p.y * st.size + p.x; };
+FP.endAt = function (st, p) {
+  for (var c = 0; c < st.ends.length; c++) {
+    if (st.ends[c].a.x === p.x && st.ends[c].a.y === p.y) return c;
+    if (st.ends[c].b.x === p.x && st.ends[c].b.y === p.y) return c;
+  }
+  return -1;
+};
+FP.indexOf = function (P, p) { for (var i = 0; i < P.length; i++) if (FP.same(P[i], p)) return i; return -1; };
+
+// 写回某色管线并同步占用网格（旧有而新无的格子清空，新格子标记归属）
+FP.setPipe = function (st, c, path) {
+  var old = st.pipes[c], i, k, keep = {};
+  for (i = 0; i < path.length; i++) keep[FP.cellKey(st, path[i])] = true;
+  for (i = 0; i < old.length; i++) { k = FP.cellKey(st, old[i]); if (!keep[k]) st.grid[k] = -1; }
+  for (i = 0; i < path.length; i++) st.grid[FP.cellKey(st, path[i])] = c;
+  st.pipes[c] = path;
+};
+
+// 开始拖拽：只有端点可以起手（Flow Free 惯例），该色管线重置为单格重画；
+// 落在空格或任何管身上都无法开始（返回 -1），重画/回退发生在拖动过程中
+FP.dragStart = function (st, p) {
+  var ec = FP.endAt(st, p);
+  if (ec === -1) return -1;
+  FP.setPipe(st, ec, [{ x: p.x, y: p.y }]);
+  st.events.push({ t: "grab", c: ec, len: 1 });
+  return ec;
+};
+
+// 单步延伸（只接受与管尾正交相邻的格子），返回是否有变化：
+// - 他色端点 → 交叉拒绝（管线不可穿越端点）
+// - 本色配对端点 → 完成连线（complete 事件）
+// - 空格 → 延伸（extend）
+// - 本色旧管 → 截断重画 / 回退（redraw）
+// - 他色管身 → 覆盖：对方截断为前缀，本方延伸进入（overwrite）
+FP.step = function (st, c, T) {
+  var P = st.pipes[c];
+  if (!P.length) return false;
+  var L = P[P.length - 1];
+  if (T.x < 0 || T.y < 0 || T.x >= st.size || T.y >= st.size) return false;
+  if (Math.abs(L.x - T.x) + Math.abs(L.y - T.y) !== 1) return false;
+  var ec = FP.endAt(st, T);
+  if (ec !== -1 && ec !== c) return false;
+  var mate = FP.same(P[0], st.ends[c].a) ? st.ends[c].b : st.ends[c].a;
+  if (ec === c && FP.same(T, mate)) {
+    FP.setPipe(st, c, P.concat([{ x: T.x, y: T.y }]));
+    st.events.push({ t: "complete", c: c, len: P.length + 1 });
+    return true;
+  }
+  var occ = st.grid[FP.cellKey(st, T)];
+  if (occ === -1) {
+    FP.setPipe(st, c, P.concat([{ x: T.x, y: T.y }]));
+    st.events.push({ t: "extend", c: c, len: P.length + 1 });
+    return true;
+  }
+  if (occ === c) {
+    var i = FP.indexOf(P, T);
+    if (i === P.length - 1) return false;
+    FP.setPipe(st, c, P.slice(0, i + 1));
+    st.events.push({ t: "redraw", c: c, len: i + 1 });
+    return true;
+  }
+  var j = FP.indexOf(st.pipes[occ], T);
+  FP.setPipe(st, occ, st.pipes[occ].slice(0, j));
+  FP.setPipe(st, c, P.concat([{ x: T.x, y: T.y }]));
+  st.events.push({ t: "overwrite", c: c, len: P.length + 1, cut: occ });
+  return true;
+};
+
+// 手指/鼠标路径跟随：从管尾向目标贪心逐格走（先走剩余距离较长的轴），
+// 被挡即停；一旦全部配对完成立即冻结棋盘（过关瞬间定格）
+FP.dragTo = function (st, c, T) {
+  var guard = 0, moved = false;
+  while (guard++ < st.size * 4 + 8) {
+    var P = st.pipes[c];
+    if (!P.length || st.won) break;
+    var L = P[P.length - 1];
+    if (FP.same(L, T)) break;
+    var dx = T.x - L.x, dy = T.y - L.y, nxt;
+    if (dx !== 0 && Math.abs(dx) >= Math.abs(dy)) nxt = { x: L.x + (dx > 0 ? 1 : -1), y: L.y };
+    else nxt = { x: L.x, y: L.y + (dy > 0 ? 1 : -1) };
+    if (!FP.step(st, c, nxt)) break;
+    moved = true;
+    var w = FP.checkWin(st);
+    if (w.win) { st.won = true; st.perfect = w.perfect; break; }
+  }
+  return moved;
+};
+
+// 过关判定：每色管首尾都是自己的两个端点 = 连完；网格无空格 = 完美
+FP.checkWin = function (st) {
+  var c, P;
+  for (c = 0; c < st.pairs; c++) {
+    P = st.pipes[c];
+    if (P.length < 2) return { win: false, perfect: false };
+    if (FP.endAt(st, P[0]) !== c || FP.endAt(st, P[P.length - 1]) !== c) return { win: false, perfect: false };
+  }
+  for (var k = 0; k < st.grid.length; k++) if (st.grid[k] === -1) return { win: true, perfect: false };
+  return { win: true, perfect: true };
+};
+
+// 生成一关：先随机布端点（哈密顿路径切段天然给出成对端点）→ 切段即全解 →
+// 生成后立即 verifyLevel 验证；失败换种子重试，哈密顿失败退化为变换蛇形路径
+FP.genLevelSpec = function (spec, seed) {
+  var lvl = null, round;
+  for (round = 0; round < 50 && !lvl; round++) {
+    var rnd = FP.mulberry32((seed + round * 1013904223) | 0);
+    var path = FP.hamPath(spec.size, rnd);
+    if (!path) path = FP.transformPath(FP.snakePath(spec.size), spec.size, Math.floor(rnd() * 8), rnd() < 0.5);
+    var segs = FP.cutPath(path, spec.pairs, rnd);
+    if (!segs) continue;
+    var cand = FP.buildLevel(spec.size, segs);
+    if (FP.verifyLevel(cand).ok) lvl = cand;
+  }
+  if (!lvl) throw new Error("genLevel failed for " + spec.size + "x" + spec.size + " pairs " + spec.pairs);
+  return lvl;
+};
+FP.genLevel = function (n) { return FP.genLevelSpec(FP.levelSpec(n), FP.levelSeed(n)); };
+
+globalThis.FP = FP;
+</script>
+<script>
+"use strict";
+// ================= UI 层（画布渲染 / 输入 / 关卡流程 / 音效） =================
+var W = 480, H = 480;
+var canvas = document.getElementById("game");
+var ctx = canvas.getContext("2d");
+var dpr = Math.min(window.devicePixelRatio || 1, 2);
+canvas.width = W * dpr; canvas.height = H * dpr;
+ctx.scale(dpr, dpr);
+
+var PALETTE = ["#ff5b6a", "#ffb84d", "#41d76a", "#3ec8ff", "#7c8cff", "#c86bff", "#ff6bd6", "#2ee6c8"];
+var screenMode = "menu";   // menu | play
+var lvl = null, st = null, curLevel = 1;
+var cell = 0, OX = 0, OY = 0, boardPx = 0;
+var dragColor = -1;
+var hintUsed = false, hintPath = null, hintColor = 0, hintTimer = 0;
+var progress = { unlocked: 1, perfect: {} };
+var muted = false;
+var playing = false;       // 平台 gameplay 事件进行中标记
+
+// ---------- 本地进度（全部 try/catch 包裹，隐私模式不崩） ----------
+try {
+  var ps = localStorage.getItem("fp_progress");
+  if (ps) {
+    var pj = JSON.parse(ps);
+    if (pj && pj.unlocked >= 1 && pj.unlocked <= 30) progress = { unlocked: pj.unlocked, perfect: pj.perfect || {} };
+  }
+} catch (e) {}
+try { muted = localStorage.getItem("fp_muted") === "1"; } catch (e) {}
+function saveProgress() { try { localStorage.setItem("fp_progress", JSON.stringify(progress)); } catch (e) {} }
+
+// ---------- 平台埋点：与 loader 的域名守卫配套，只有 crazygames 域会真正调用 ----------
+function portalStart() {
+  if (playing) return;
+  try {
+    if (window.__portal === "crazygames" && window.CrazyGames && window.CrazyGames.SDK) {
+      window.CrazyGames.SDK.game.gameplayStart(); playing = true;
+    }
+  } catch (e) {}
+}
+function portalStop() {
+  if (!playing) return;
+  playing = false;
+  try {
+    if (window.__portal === "crazygames" && window.CrazyGames && window.CrazyGames.SDK) {
+      window.CrazyGames.SDK.game.gameplayStop();
+    }
+  } catch (e) {}
+}
+function portalHappy() {
+  try {
+    if (window.__portal === "crazygames" && window.CrazyGames && window.CrazyGames.SDK) {
+      window.CrazyGames.SDK.game.happytime();
+    }
+  } catch (e) {}
+}
+
+// ---------- 音效：WebAudio 程序化合成 ----------
+var actx = null;
+function ensureAudio() {
+  try {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === "suspended") actx.resume();
+  } catch (e) {}
+}
+function beep(freq, dur, type, gainv) {
+  if (muted) return;
+  try {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === "suspended") actx.resume();
+    var o = actx.createOscillator(), g = actx.createGain();
+    o.type = type || "sine"; o.frequency.value = freq;
+    g.gain.setValueAtTime(gainv || 0.1, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
+    o.connect(g); g.connect(actx.destination);
+    o.start(); o.stop(actx.currentTime + dur);
+  } catch (e) {}
+}
+// 大调五声音阶：管线每延伸一格弹一个音（按管线长度上行），批量步进时错开 26ms 成小琶音
+var SCALE = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24, 26, 28, 31];
+function playEvents() {
+  if (!st) return;
+  var evs = st.events; st.events = [];
+  for (var i = 0; i < evs.length; i++) {
+    (function (ev, k) {
+      setTimeout(function () {
+        if (ev.t === "extend") beep(220 * Math.pow(2, SCALE[Math.min(ev.len - 1, SCALE.length - 1)] / 12), 0.09, "sine", 0.07);
+        else if (ev.t === "complete") { beep(660, 0.1, "triangle", 0.09); setTimeout(function () { beep(880, 0.14, "triangle", 0.09); }, 70); }
+        else if (ev.t === "overwrite") beep(150, 0.07, "sawtooth", 0.05);
+        else if (ev.t === "redraw") beep(190, 0.05, "square", 0.045);
+        else if (ev.t === "grab") beep(330, 0.04, "sine", 0.05);
+      }, k * 26);
+    })(evs[i], i);
+  }
+}
+
+// ---------- 关卡流程 ----------
+function layoutBoard() {
+  var m = 14;
+  cell = Math.min((W - m * 2) / lvl.size, 82);
+  boardPx = cell * lvl.size;
+  OX = (W - boardPx) / 2; OY = (H - boardPx) / 2;
+}
+function startLevel(n) {
+  curLevel = n;
+  lvl = FP.genLevel(n);
+  st = FP.newGame(lvl);
+  hintUsed = false; hintPath = null; hintTimer = 0; dragColor = -1;
+  screenMode = "play";
+  document.getElementById("menu").style.display = "none";
+  document.getElementById("overlay").style.display = "none";
+  document.getElementById("lvlLabel").textContent = "LV " + n;
+  var hb = document.getElementById("hintBtn");
+  hb.disabled = false; hb.textContent = "HINT 1";
+  layoutBoard();
+  beep(520, 0.06, "square", 0.05);
+  portalStart();
+}
+function resetLevel() {
+  if (!lvl) return;
+  st = FP.newGame(lvl);
+  hintPath = null; hintTimer = 0; dragColor = -1;
+  document.getElementById("overlay").style.display = "none";
+  portalStart();
+  beep(380, 0.05, "square", 0.05);
+}
+function backToMenu() {
+  screenMode = "menu"; dragColor = -1;
+  portalStop();
+  document.getElementById("overlay").style.display = "none";
+  document.getElementById("menu").style.display = "flex";
+  buildMenu();
+  beep(440, 0.06, "square", 0.05);
+}
+
+// ---------- 过关结算 ----------
+function onWin() {
+  dragColor = -1;
+  portalStop();
+  if (st.perfect) progress.perfect[curLevel] = true;
+  var nu = Math.min(curLevel + 1, 30);
+  if (nu > progress.unlocked) progress.unlocked = nu;
+  saveProgress();
+  if (st.perfect) portalHappy();
+  var notes = st.perfect ? [523, 659, 784, 1047, 1319, 1568] : [523, 659, 784, 1047];
+  for (var i = 0; i < notes.length; i++) {
+    (function (f, k) { setTimeout(function () { beep(f, 0.16, "triangle", 0.09); }, k * 90); })(notes[i], i);
+  }
+  setTimeout(function () {
+    if (!st || !st.won || screenMode !== "play") return;
+    document.getElementById("ovTitle").textContent = st.perfect ? "PERFECT!" : "Level Complete";
+    document.getElementById("ovStar").textContent = st.perfect ? "★ ★ ★" : "☆ ☆ ☆";
+    document.getElementById("ovText").textContent = st.perfect
+      ? "All pairs connected and the board is fully covered."
+      : "All pairs connected. Cover every cell for a perfect star.";
+    document.getElementById("nextBtn").style.display = curLevel >= 30 ? "none" : "";
+    document.getElementById("overlay").style.display = "flex";
+  }, 620);
+}
+
+// ---------- 提示道具：每关 1 次，展示某未完成色答案路径的一段（从端点起最多 6 格） ----------
+function useHint() {
+  if (screenMode !== "play" || !st || st.won || hintUsed) return;
+  hintUsed = true;
+  var pick = 0;
+  for (var c = 0; c < st.pairs; c++) {
+    var P = st.pipes[c];
+    if (!(P.length >= 2 && FP.endAt(st, P[0]) === c && FP.endAt(st, P[P.length - 1]) === c)) { pick = c; break; }
+  }
+  var sol = lvl.solution[pick];
+  hintPath = sol.slice(0, Math.min(sol.length, 6));
+  hintColor = pick; hintTimer = 3.2;
+  var hb = document.getElementById("hintBtn");
+  hb.disabled = true; hb.textContent = "HINT 0";
+  beep(500, 0.08, "triangle", 0.07);
+  setTimeout(function () { beep(750, 0.1, "triangle", 0.07); }, 80);
+}
+
+// ---------- 关卡选择菜单 ----------
+function starTotal() { var n = 0; for (var k in progress.perfect) if (progress.perfect[k]) n++; return n; }
+function buildMenu() {
+  var g = document.getElementById("levelGrid");
+  g.innerHTML = "";
+  for (var n = 1; n <= 30; n++) {
+    var b = document.createElement("button");
+    var unlocked = n <= progress.unlocked;
+    b.className = unlocked ? "" : "locked";
+    b.textContent = String(n);
+    if (progress.perfect[n]) {
+      var s = document.createElement("span");
+      s.className = "star"; s.textContent = "★";
+      b.appendChild(s);
+    }
+    (function (nn, ok) {
+      b.addEventListener("click", function () {
+        if (!ok) { beep(120, 0.08, "square", 0.05); return; }
+        startLevel(nn);
+      });
+    })(n, unlocked);
+    g.appendChild(b);
+  }
+  document.getElementById("starCount").textContent = "Perfect stars: " + starTotal() + "/30";
+}
+
+// ---------- 输入：触控 + 鼠标拖动画线 ----------
+function cellAt(clientX, clientY) {
+  var rect = canvas.getBoundingClientRect();
+  var x = (clientX - rect.left) / rect.width * W;
+  var y = (clientY - rect.top) / rect.height * H;
+  var cx = Math.floor((x - OX) / cell), cy = Math.floor((y - OY) / cell);
+  if (cx < 0 || cy < 0 || cx >= lvl.size || cy >= lvl.size) return null;
+  return { x: cx, y: cy };
+}
+function pointerDown(px, py) {
+  ensureAudio();
+  if (screenMode !== "play" || !st || st.won) return;
+  var p = cellAt(px, py);
+  if (!p) return;
+  dragColor = FP.dragStart(st, p);
+  if (dragColor >= 0) playEvents();
+}
+function pointerMove(px, py) {
+  if (screenMode !== "play" || !st || st.won || dragColor < 0) return;
+  var p = cellAt(px, py);
+  if (!p) return;
+  var moved = FP.dragTo(st, dragColor, p);
+  if (moved) {
+    playEvents();
+    if (st.won) onWin();
+  }
+}
+canvas.addEventListener("mousedown", function (e) { pointerDown(e.clientX, e.clientY); });
+canvas.addEventListener("mousemove", function (e) { if (e.buttons & 1) pointerMove(e.clientX, e.clientY); });
+canvas.addEventListener("touchstart", function (e) { e.preventDefault(); pointerDown(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+canvas.addEventListener("touchmove", function (e) { e.preventDefault(); pointerMove(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+canvas.addEventListener("touchend", function (e) { e.preventDefault(); dragColor = -1; }, { passive: false });
+canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+window.addEventListener("mouseup", function () { dragColor = -1; });
+
+document.getElementById("menuBtn").addEventListener("click", backToMenu);
+document.getElementById("resetBtn").addEventListener("click", function () { if (screenMode === "play") resetLevel(); });
+document.getElementById("hintBtn").addEventListener("click", useHint);
+document.getElementById("muteBtn").addEventListener("click", function () {
+  muted = !muted;
+  try { localStorage.setItem("fp_muted", muted ? "1" : "0"); } catch (e) {}
+  document.getElementById("muteBtn").textContent = muted ? "SOUND OFF" : "SOUND ON";
+  if (!muted) beep(700, 0.06, "square", 0.06);
+});
+document.getElementById("nextBtn").addEventListener("click", function () { if (curLevel < 30) startLevel(curLevel + 1); });
+document.getElementById("levelsBtn").addEventListener("click", backToMenu);
+document.getElementById("replayBtn").addEventListener("click", resetLevel);
+document.addEventListener("keydown", function (e) {
+  if (e.key === "Escape") backToMenu();
+  else if (e.key === "r" || e.key === "R") { if (screenMode === "play") resetLevel(); }
+  else if (e.key === "h" || e.key === "H") useHint();
+});
+
+// ---------- 渲染 ----------
+function shade(hex, amt) {
+  var n = parseInt(hex.slice(1), 16);
+  var r = Math.max(0, Math.min(255, (n >> 16) + Math.round(255 * amt)));
+  var g = Math.max(0, Math.min(255, ((n >> 8) & 255) + Math.round(255 * amt)));
+  var b = Math.max(0, Math.min(255, (n & 255) + Math.round(255 * amt)));
+  return "rgb(" + r + "," + g + "," + b + ")";
+}
+function roundRect(c, x, y, w, h, rad) {
+  c.beginPath();
+  c.moveTo(x + rad, y);
+  c.arcTo(x + w, y, x + w, y + h, rad);
+  c.arcTo(x + w, y + h, x, y + h, rad);
+  c.arcTo(x, y + h, x, y, rad);
+  c.arcTo(x, y, x + w, y, rad);
+  c.closePath();
+}
+function pipePath(P) {
+  ctx.beginPath();
+  ctx.moveTo(OX + P[0].x * cell + cell / 2, OY + P[0].y * cell + cell / 2);
+  for (var i = 1; i < P.length; i++) ctx.lineTo(OX + P[i].x * cell + cell / 2, OY + P[i].y * cell + cell / 2);
+}
+// mode: 0 未完成 1 已完成（带流动光效） 2 拖拽中（更亮更大辉光）
+function drawPipe(P, color, mode, t) {
+  var w = cell * 0.42;
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  ctx.shadowColor = color; ctx.shadowBlur = mode === 2 ? 16 : mode === 1 ? 12 : 7;
+  ctx.strokeStyle = color; ctx.lineWidth = w;
+  pipePath(P); ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = "rgba(255,255,255,.25)"; ctx.lineWidth = w * 0.42;
+  pipePath(P); ctx.stroke();
+  if (mode === 1) {
+    ctx.setLineDash([cell * 0.32, cell * 0.85]);
+    ctx.lineDashOffset = -(t * 0.06) % (cell * 1.17);
+    ctx.strokeStyle = "rgba(255,255,255,.55)"; ctx.lineWidth = w * 0.3;
+    pipePath(P); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+function drawEndpoint(p, color, connected, t) {
+  var x = OX + p.x * cell + cell / 2, y = OY + p.y * cell + cell / 2;
+  var r = cell * 0.30;
+  ctx.fillStyle = shade(color, -0.55);
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = connected ? 1 : 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(t / 260 + p.x * 2 + p.y));
+  ctx.strokeStyle = color; ctx.lineWidth = cell * 0.085;
+  ctx.shadowColor = color; ctx.shadowBlur = connected ? 10 : 6;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(x, y, r * 0.5, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+function isDone(st, c) {
+  var P = st.pipes[c];
+  return P.length >= 2 && FP.endAt(st, P[0]) === c && FP.endAt(st, P[P.length - 1]) === c;
+}
+function draw(t) {
+  var bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#101024"); bg.addColorStop(1, "#07070f");
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  if (screenMode !== "play" || !st) return;
+  // 棋盘底板
+  ctx.fillStyle = "rgba(255,255,255,.045)";
+  roundRect(ctx, OX - 10, OY - 10, boardPx + 20, boardPx + 20, 18); ctx.fill();
+  // 空格中心小点
+  ctx.fillStyle = "rgba(255,255,255,.13)";
+  for (var yy = 0; yy < lvl.size; yy++) for (var xx = 0; xx < lvl.size; xx++) {
+    if (st.grid[yy * lvl.size + xx] !== -1) continue;
+    ctx.beginPath();
+    ctx.arc(OX + xx * cell + cell / 2, OY + yy * cell + cell / 2, Math.max(1.5, cell * 0.045), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // 管线：未完成的画在底层，已完成与拖拽中的置顶
+  var order = [];
+  for (var c = 0; c < st.pairs; c++) {
+    if (st.pipes[c].length < 2) continue;
+    order.push({ c: c, done: isDone(st, c), drag: c === dragColor ? 1 : 0 });
+  }
+  order.sort(function (a, b) { return (a.drag - b.drag) || ((a.done ? 1 : 0) - (b.done ? 1 : 0)); });
+  for (var i = 0; i < order.length; i++) {
+    var o = order[i];
+    drawPipe(st.pipes[o.c], PALETTE[o.c % PALETTE.length], o.drag ? 2 : (o.done ? 1 : 0), t);
+  }
+  // 端点（未连成的成对端点呼吸闪烁）
+  for (var c2 = 0; c2 < st.pairs; c2++) {
+    var e = st.ends[c2], col = PALETTE[c2 % PALETTE.length], conn = isDone(st, c2);
+    drawEndpoint(e.a, col, conn, t);
+    drawEndpoint(e.b, col, conn, t);
+  }
+  // 提示虚影（最后 0.5 秒淡出）
+  if (hintPath && hintTimer > 0) {
+    ctx.globalAlpha = Math.min(1, hintTimer / 0.5) * 0.75;
+    ctx.setLineDash([cell * 0.28, cell * 0.3]);
+    ctx.lineDashOffset = -(t * 0.05) % (cell * 0.58);
+    ctx.strokeStyle = PALETTE[hintColor % PALETTE.length];
+    ctx.lineWidth = cell * 0.16; ctx.lineCap = "round"; ctx.lineJoin = "round";
+    pipePath(hintPath); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha = 1;
+  }
+}
+var last = 0;
+function frame(t) {
+  var dt = Math.min((t - last) / 1000, 0.05); last = t;
+  if (hintTimer > 0) { hintTimer -= dt; if (hintTimer <= 0) { hintTimer = 0; hintPath = null; } }
+  draw(t);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ---------- 启动 ----------
+document.getElementById("muteBtn").textContent = muted ? "SOUND OFF" : "SOUND ON";
+buildMenu();
+// 调试/测试钩子（不影响游戏逻辑）
+window.__fp = {
+  get screen() { return screenMode; },
+  get level() { return curLevel; },
+  get st() { return st; },
+  get progress() { return progress; },
+  get board() { return { cell: cell, ox: OX, oy: OY, size: lvl ? lvl.size : 0 }; }
+};
+</script>
+</body>
+</html>
